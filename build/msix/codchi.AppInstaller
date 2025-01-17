@@ -13,7 +13,7 @@
 
     <UpdateSettings>
         <AutomaticBackgroundTask/>
-        <ForceUpdateFromAnyVersion>true</ForceUpdateFromAnyVersion>
+        <!-- <ForceUpdateFromAnyVersion>true</ForceUpdateFromAnyVersion> -->
     </UpdateSettings>
 
 </AppInstaller>

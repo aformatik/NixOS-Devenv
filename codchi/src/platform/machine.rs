@@ -2,12 +2,7 @@ use super::{
     platform::HostImpl, Host, LinuxCommandBuilder, LinuxCommandTarget, LinuxUser, NixDriver,
 };
 use crate::{
-    cli::CODCHI_DRIVER_MODULE,
-    config::{EnvSecret, FlakeLocation, MachineConfig},
-    consts::{self, host, ToPath},
-    logging::{hide_progress, log_progress, set_progress_status, with_suspended_progress},
-    platform::{self, CommandExt, Driver, Store},
-    util::PathExt,
+    cli::CODCHI_DRIVER_MODULE, config::{EnvSecret, FlakeLocation, MachineConfig}, consts::{self, host, ToPath}, logging::{hide_progress, log_progress, set_progress_status, with_suspended_progress}, platform::{self, CommandExt, Driver, Store}, progress_scope, util::PathExt
 };
 use anyhow::{bail, Context, Result};
 use itertools::Itertools;
@@ -428,6 +423,15 @@ git add flake.*
         hide_progress();
         self.create_exec_cmd(&cmd.iter().map(|str| str.as_str()).collect_vec())
             .exec()?;
+        Ok(())
+    }
+
+    pub fn run_init_script(&self) -> Result<()> {
+        progress_scope! {
+            set_progress_status(format!("Running init script of machine '{}'...", self.config.name));
+            self.cmd().run("codchi-init", &[]).wait_ok()?;
+        }
+
         Ok(())
     }
 }

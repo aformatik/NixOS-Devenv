@@ -9,6 +9,7 @@ use crate::{
 use clap::{CommandFactory, Parser};
 use config::{git_url::GitUrl, CodchiConfig, MachineConfig};
 use console::style;
+use log::Level;
 use logging::{set_progress_status, CodchiOutput};
 use platform::{store_debug_shell, ConfigStatus, Host, MachineDriver};
 use std::{
@@ -124,18 +125,30 @@ Thank you kindly!"#
             input_options: options,
             module_paths,
         } => {
-            let machine = module::init(
-                machine_name,
-                url.as_ref().map(GitUrl::from),
-                options,
-                module_paths,
-            )?;
-            if !options.no_build {
-                machine.build(true)?;
-                log::info!("Machine '{machine_name}' is ready! Use `codchi exec {machine_name}` to start it.")
-            } else {
-                alert_dirty(machine);
-            }
+            (|| {
+                let machine = module::init(
+                    machine_name,
+                    url.as_ref().map(GitUrl::from),
+                    options,
+                    module_paths,
+                )?;
+                if !options.no_build {
+                    machine.build(true)?;
+                    machine.run_init_script()?;
+                    log::info!("Machine '{machine_name}' is ready! Use `codchi exec {machine_name}` to start it.")
+                } else {
+                    alert_dirty(machine);
+                }
+                anyhow::Ok(())
+            })()
+            .inspect_err(|_| {
+                if !log::log_enabled!(Level::Debug) {
+                    log::error!("Failed initializing machine '{machine_name}'. Removing leftovers...");
+                    if let Ok(machine) = Machine::by_name(machine_name, false) {
+                        machine.delete(true).ignore();
+                    }
+                }
+            })?;
         }
         Cmd::Clone {
             machine_name,
@@ -147,18 +160,31 @@ Thank you kindly!"#
             single_branch,
             recurse_submodules,
             shallow_submodules,
+            keep_remote,
         } => {
-            module::clone(
-                machine_name,
-                GitUrl::from(url),
-                input_options,
-                module_paths,
-                dir,
-                depth,
-                single_branch,
-                recurse_submodules,
-                shallow_submodules,
-            )?;
+            (|| {
+                let machine = module::clone(
+                    machine_name,
+                    GitUrl::from(url),
+                    input_options,
+                    module_paths,
+                    dir,
+                    depth,
+                    single_branch,
+                    recurse_submodules,
+                    shallow_submodules,
+                    keep_remote
+                )?;
+                machine.run_init_script()
+            })()
+            .inspect_err(|_| {
+                if !log::log_enabled!(Level::Debug) {
+                    log::error!("Failed cloning machine '{machine_name}'. Removing leftovers...");
+                    if let Ok(machine) = Machine::by_name(machine_name, false) {
+                        machine.delete(true).ignore();
+                    }
+                }
+            })?;
             log::info!(
                 "Machine '{machine_name}' is ready! Use `codchi exec {machine_name}` to start it."
             );

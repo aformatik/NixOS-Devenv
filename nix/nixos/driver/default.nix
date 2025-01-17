@@ -8,15 +8,17 @@ in
     ./wsl
     ./secrets.nix
     ./host-integration.nix
+    ./init.nix
   ];
 
   options.codchi.driver = {
     name = mkOption {
-      type = types.str;
+      type = types.enum [ "wsl" "lxd" "none" ];
       internal = true;
     };
     iconCommand = mkOption {
       type = types.nullOr types.str;
+      default = null;
       internal = true;
       description = ''
         Bash command to convert XDG desktop icons to ones that the host platform understands.
@@ -37,31 +39,35 @@ in
 
     # Nix(OS) stuff managed by codchi
     {
-      system.build.codchi.container = (import ../../container { inherit inputs pkgs lib; }
-        {
-          config = lib.recursiveUpdate
-            config.codchi.driver.containerCfg
+      system.build.codchi.container =
+        if (config.codchi.driver.name != "none") then
+          (import ../../container { inherit inputs pkgs lib; }
             {
-              machine = {
-                enable = true;
-                driver.${config.codchi.driver.name}.enable = true;
-              };
-            };
-        }).config.build.tarball;
+              config = lib.recursiveUpdate
+                config.codchi.driver.containerCfg
+                {
+                  machine = {
+                    enable = true;
+                    driver.${config.codchi.driver.name}.enable = true;
+                  };
+                };
+            }).config.build.tarball
+        else null;
 
       systemd = {
         services = {
           # Create files required by the driver
-          "create-files" = {
-            after = [ "network.target" ];
-            wantedBy = [ "multi-user.target" ];
-            serviceConfig.Type = "oneshot";
-            script = /* bash */ ''
-              ( cd / &&
-                ${lib.getExe config.system.build.codchi.container.passthru.createFiles}
-              )
-            '';
-          };
+          "create-files" = mkIf (config.codchi.driver.name != "none")
+            {
+              after = [ "network.target" ];
+              wantedBy = [ "multi-user.target" ];
+              serviceConfig.Type = "oneshot";
+              script = /* bash */ ''
+                ( cd / &&
+                  ${lib.getExe config.system.build.codchi.container.passthru.createFiles}
+                )
+              '';
+            };
 
           nix-daemon.enable = mkForce false;
           nix-gc.enable = mkForce false;

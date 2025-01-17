@@ -582,7 +582,8 @@ pub fn clone(
     single_branch: &bool,
     recurse_submodules: &bool,
     shallow_submodules: &bool,
-) -> Result<()> {
+    keep_remote: &bool,
+) -> Result<Machine> {
     let mut input_options = input_options.clone();
     if input_options.no_build {
         log::warn!("Ignoring option `--no-build`.");
@@ -670,13 +671,16 @@ nix run nixpkgs#git -- checkout {commit}
             .output_ok_streaming(channel().1, |line| {
                 log_progress("git clone", log::Level::Info, &line)
             })?;
-        let (lock, mut cfg) = MachineConfig::open_existing(&machine.config.name, true)?;
-        for url in cfg.modules.values_mut() {
-            url.location = FlakeLocation::Local{ path: target_dir.clone() }
+
+        if !keep_remote {
+            let (lock, mut cfg) = MachineConfig::open_existing(&machine.config.name, true)?;
+            for url in cfg.modules.values_mut() {
+                url.location = FlakeLocation::Local{ path: target_dir.clone() }
+            }
+            cfg.write(lock)?;
+            machine.config = cfg;
+            machine.write_flake()?;
         }
-        cfg.write(lock)?;
-        machine.config = cfg;
-        machine.write_flake()?;
     };
-    Ok(())
+    Ok(machine)
 }
